@@ -1,0 +1,35 @@
+# ---- 运行时数据（不要提交）----
+server/media/
+server/db.json
+server/tts-config.json
+captures/
+
+# ---- 大体积依赖 / 模型 ----
+tools/gpt-sovits/.venv/
+tools/gpt-sovits/refs/
+tools/jadx/
+build/
+
+# ---- 逆向产物二进制（体积大，单独备份）----
+*.exe
+*.apk
+*.zip
+*.7z
+*.asar
+*.dll
+*.so
+
+# ---- 通用 ----
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+.env
+.DS_Store
+Thumbs.db
+*.log
+
+# ---- 编辑器 ----
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,16 @@
+{
+  "provider": "auto",
+  "openai": {
+    "baseUrl": "https://api.siliconflow.cn/v1",
+    "apiKey": "",
+    "model": "tts-1",
+    "voice": "alloy"
+  },
+  "edge": {
+    "voice": "zh-CN-XiaoxiaoNeural"
+  },
+  "sapi": {
+    "voice": "Microsoft Huihui Desktop",
+    "rate": 0
+  }
+}

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>星辰语音 · 本地复刻控制台</title>
+<style>
+  :root{--bg:#0b0d12;--card:#141821;--line:#232a36;--fg:#e6e9ef;--dim:#8b93a1;--acc:#11e27d;--red:#ff5a5a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  header{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);background:#0e1219}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  .grow{flex:1}
+  .tag{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:2px 10px}
+  main{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:16px;max-width:1400px;margin:0 auto}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .card h2{font-size:13px;margin:0 0 10px;color:var(--dim);font-weight:600;letter-spacing:.5px}
+  input,select,textarea,button{font:inherit;color:var(--fg);background:#0e1219;border:1px solid var(--line);border-radius:8px;padding:7px 10px;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--acc)}
+  button{cursor:pointer;background:#1b2130}
+  button:hover{border-color:var(--acc)}
+  button.primary{background:var(--acc);color:#05240f;border-color:var(--acc);font-weight:600}
+  button.danger{color:var(--red)}
+  .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+  .row > *{min-width:0}
+  .stream{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;cursor:pointer;transition:.15s}
+  .stream:hover{border-color:#3a465c}
+  .stream.active{border-color:var(--acc);box-shadow:0 0 0 1px #11e27d33 inset}
+  .stream .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--dim)}
+  .dot{width:8px;height:8px;border-radius:99px;display:inline-block;background:#555}
+  .dot.on{background:var(--acc);box-shadow:0 0 8px var(--acc)}
+  #log{height:420px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;background:#0a0d13;font-size:13px}
+  .line{padding:3px 0;border-bottom:1px dashed #161b25;display:flex;gap:8px}
+  .line .who{color:var(--acc);min-width:90px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .line .txt{flex:1;word-break:break-all}
+  .line.speech .txt{color:#ffd479}
+  .line.sys .txt{color:var(--dim)}
+  .line.err .txt{color:var(--red)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .hint{font-size:12px;color:var(--dim);margin-top:8px}
+  #login{max-width:360px;margin:12vh auto}
+  .hidden{display:none!important}
+  .badge{font-size:11px;padding:1px 6px;border-radius:6px;background:#1d2533;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>星辰语音 · 本地复刻控制台</h1>
+  <span class="tag" id="productTag">—</span>
+  <div class="grow"></div>
+  <span class="tag" id="userTag">未登录</span>
+  <button id="btnLogout" class="hidden">退出</button>
+</header>
+
+<!-- 登录 -->
+<div id="login" class="card">
+  <h2>登录</h2>
+  <div class="row"><input id="lUser" placeholder="账号" value="admin" style="flex:1" /></div>
+  <div class="row"><input id="lPass" type="password" placeholder="密码" value="admin123" style="flex:1" /></div>
+  <button class="primary" id="btnLogin" style="width:100%">登录</button>
+  <div class="hint">默认账号 admin / admin123（服务端 db.json 可改）</div>
+</div>
+
+<main id="app" class="hidden">
+  <!-- 左：直播位 -->
+  <div class="card">
+    <h2>直播位</h2>
+    <div class="row">
+      <input id="newName" placeholder="直播任务名称" style="flex:1" />
+      <button id="btnAdd">新增</button>
+    </div>
+    <div id="streams"></div>
+    <div class="hint">把 live_id 填进桌面端「回调直播位ID」，弹幕就会进这里。</div>
+  </div>
+
+  <!-- 右：实时 + 设置 -->
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="row">
+        <h2 style="margin:0">实时弹幕<span class="badge" id="liveTag">未开播</span></h2>
+        <div class="grow"></div>
+        <label class="mono"><input type="checkbox" id="speakOn" checked /> 播放语音</label>
+        <button id="btnClear">清屏</button>
+      </div>
+      <div id="log"></div>
+      <div class="hint">
+        语音由本服务合成 mp3 并在浏览器播放；要让直播伴侣当成麦克风，
+        需把系统播放设备设为 VB-Cable，或在 OBS/伴侣里选“立体声混音”。
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>语音规则（当前直播位）</h2>
+      <div class="grid2">
+        <label>播报模式
+          <select id="speakMode">
+            <option value="keyword">关键词触发</option>
+            <option value="all">全部播报</option>
+            <option value="off">关闭</option>
+          </select>
+        </label>
+        <label>音色
+          <select id="voice"></select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="template" placeholder="{nickname}说：{content}" style="flex:1" />
+      </div>
+      <div class="row">
+        <input id="keywords" placeholder="关键词，逗号分隔：价格,怎么买,链接" style="flex:1" />
+      </div>
+      <div class="row">
+        <input id="dyRoom" placeholder="抖音直播间地址或 room_id（直连，可不装客户端）" style="flex:1" />
+        <button id="btnDy">接入直连</button>
+        <button id="btnDyStop">断开</button>
+      </div>
+
+      <details style="margin-top:10px">
+        <summary class="mono" style="cursor:pointer;color:#8b93a1">双人对播（主播 + 助播）</summary>
+        <div class="grid2" style="margin-top:8px">
+          <label>主播音色 <select id="hostVoice"></select></label>
+          <label>助播音色 <select id="assistVoice"></select></label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label style="flex:1">主播占比 <input id="zhuPct" type="number" min="0" max="100" value="30" style="width:80px" /> %</label>
+          <span class="mono" id="duoState">未启用（选了两个音色才生效）</span>
+        </div>
+        <div class="hint">
+          复刻原系统 <span class="mono">live/extPerson</span> 的 <span class="mono">hostVoice / assistantVoice / zhu_baifenbi</span>。
+          默认主播 30%、助播 70%；问句优先助播接话，连续两句同一人会自动换人。
+        </div>
+      </details>
+      <div class="row">
+        <button class="primary" id="btnSaveCfg">保存规则</button>
+        <button id="btnTest">试听</button>
+        <input id="testText" placeholder="试听文本" value="欢迎来到直播间，想要的下方小黄车" style="flex:1" />
+      </div>
+
+      <details style="margin-top:10px">
+        <summary class="mono" style="cursor:pointer;color:#8b93a1">语音引擎（云端 / 克隆 / 本机）</summary>
+        <div class="grid2" style="margin-top:8px">
+          <label>引擎
+            <select id="ttsProvider">
+              <option value="auto">自动（云端优先）</option>
+              <option value="edge">只用 Edge 云端</option>
+              <option value="openai">只用自定义/克隆</option>
+              <option value="sapi">只用本机 SAPI</option>
+            </select>
+          </label>
+          <label>模型 <input id="ttsModel" placeholder="tts-1" /></label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input id="ttsBase" placeholder="baseUrl：https://api.siliconflow.cn/v1 或 http://127.0.0.1:9880" style="flex:1" />
+        </div>
+        <div class="row">
+          <input id="ttsKey" placeholder="apiKey（留空不改）" style="flex:1" />
+          <input id="ttsVoice" placeholder="音色，如 alloy / 参考音频名" style="width:180px" />
+        </div>
+        <div class="row">
+          <button id="btnTtsSave">保存引擎配置</button>
+          <span class="mono" id="ttsState">—</span>
+        </div>
+        <div class="row">
+          <button class="primary" id="btnWarmup">预热克隆（常用话术）</button>
+          <span class="mono" id="warmupState">把常用话术提前合成，直播时才能秒出真人声</span>
+        </div>
+        <div class="hint">
+          只要是 OpenAI 兼容的 <span class="mono">POST {baseUrl}/audio/speech</span> 都能接。
+          克隆音色需要在 <span class="mono">D:\tts-refs\</span> 放 6~15 秒的 wav 素材。
+        </div>
+      </details>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const api = async (p, opt = {}) => {
+  const r = await fetch(p, {
+    ...opt,
+    headers: { 'Content-Type': 'application/json', Authorization: localStorage.token || '', ...(opt.headers || {}) },
+  });
+  return r.json();
+};
+let streams = [], cur = null, es = null, audioQ = [], playing = false;
+
+/* ---------------- 登录 ---------------- */
+$('btnLogin').onclick = async () => {
+  const r = await api('/api/v1.token/build', {
+    method: 'POST',
+    body: JSON.stringify({ username: $('lUser').value.trim(), password: $('lPass').value, merchant: 1 }),
+  });
+  if (r.code !== 200) return alert(r.msg || '登录失败');
+  localStorage.token = r.data.access_token;
+  localStorage.user = r.data.username;
+  boot();
+};
+$('btnLogout').onclick = () => { localStorage.clear(); location.reload(); };
+
+/* ---------------- 启动 ---------------- */
+async function boot() {
+  if (!localStorage.token) return;
+  const info = await api('/api/v1/member/tmymember?merchid=1');
+  if (!info.data?.member?.length) { localStorage.clear(); return location.reload(); }
+  $('login').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  $('btnLogout').classList.remove('hidden');
+  $('productTag').textContent = info.data.home.product;
+  $('userTag').textContent = `${localStorage.user} · 剩余 ${info.data.member[0].minutes} 分钟`;
+  const v = await api('/api/voices');
+  $('voice').innerHTML = (v.data || []).map((x) => `<option value="${x.id}">${x.name}</option>`).join('');
+  await loadTts();
+  await loadStreams();
+}
+
+/** 刷新音色下拉 */
+async function loadVoices() {
+  const v = await api('/api/voices');
+  const curVal = $('voice').value;
+  $('voice').innerHTML = (v.data || []).map((x) => `<option value="${x.id}">${x.name}</option>`).join('');
+  if (curVal && [...$('voice').options].some((o) => o.value === curVal)) $('voice').value = curVal;
+  if (cur) fillDuo();          // 音色表变了，双人下拉同步刷新
+}
+
+/** 读取语音引擎配置 */
+async function loadTts() {
+  const r = await api('/api/tts/config');
+  if (r.code !== 200) return;
+  const c = r.data;
+  $('ttsProvider').value = c.provider || 'auto';
+  $('ttsBase').value = c.openai?.baseUrl || '';
+  $('ttsModel').value = c.openai?.model || '';
+  $('ttsVoice').value = c.openai?.voice || '';
+  $('ttsKey').value = '';
+  $('ttsKey').placeholder = c.openai?.apiKey ? `已保存：${c.openai.apiKey}（留空不改）` : 'apiKey（留空不改）';
+  $('ttsState').textContent = c.openai?.configured ? '自定义引擎已配置' : '未配置自定义引擎';
+}
+
+$('btnTtsSave').onclick = async () => {  const patch = {
+    provider: $('ttsProvider').value,
+    openai: {
+      baseUrl: $('ttsBase').value.trim(),
+      model: $('ttsModel').value.trim(),
+      voice: $('ttsVoice').value.trim(),
+    },
+  };
+  const k = $('ttsKey').value.trim();
+  if (k) patch.openai.apiKey = k;
+  const r = await api('/api/tts/config', { method: 'POST', body: JSON.stringify(patch) });
+  if (r.code !== 200) return log('err', '保存失败：' + r.msg);
+  log('sys', '语音引擎配置已保存');
+  await loadVoices();
+  await loadTts();
+};
+
+/* 预热克隆：把常用话术提前合成，直播时才能秒出真人声 */
+$('btnWarmup').onclick = async () => {
+  if (!cur) return alert('先选一个直播位');
+  if (!String(cur.hostVoice || cur.voice || '').startsWith('clone:')) {
+    return alert('当前音色不是克隆音色，请先在「音色」里选「本地克隆」');
+  }
+  $('warmupState').textContent = '预热中…（每句约 10 秒，请勿关闭页面）';
+  const r = await api('/api/v1.liveapi/warmupClone', {
+    method: 'POST', body: JSON.stringify({ id: cur.id }),
+  });
+  if (r.code !== 200) {
+    $('warmupState').textContent = '预热失败：' + r.msg;
+    return;
+  }
+  log('sys', `开始预热 ${r.data.queued} 句常用话术`);
+  $('warmupState').textContent = `已排队 ${r.data.queued} 句，进度见右侧日志`;
+};
+
+async function loadStreams() {
+  const r = await api('/api/v1/member/stream');
+  if (r.code === 401) { localStorage.clear(); return location.reload(); }
+  streams = r.data || [];
+  renderStreams();
+  if (streams.length && !cur) select(streams[0]);
+}
+
+function renderStreams() {
+  $('streams').innerHTML = streams.map((s) => `
+    <div class="stream ${cur && cur.id === s.id ? 'active' : ''}" data-id="${s.id}">
+      <div class="top">
+        <div><span class="dot ${s.running ? 'on' : ''}"></span>
+          <b>${esc(s.name)}</b> <span class="mono">#${s.id}</span></div>
+        <span class="mono">${s.bullets || 0} 条</span>
+      </div>
+      <div class="mono">live_id: <b style="color:#11e27d">${s.live_id}</b>
+        <button data-copy="${s.live_id}" style="padding:1px 6px;margin-left:6px">复制</button></div>
+      <div class="row" style="margin:8px 0 0">
+        <button data-act="${s.running ? 'stop' : 'start'}" data-id="${s.id}">${s.running ? '关播' : '开播'}</button>
+        <button data-act="renew" data-id="${s.id}">续 60 分钟</button>
+        <button class="danger" data-act="del" data-id="${s.id}">删除</button>
+      </div>
+    </div>`).join('') || '<div class="hint">还没有直播位，先新增一个。</div>';
+}
+
+function select(s) {
+  cur = s;
+  renderStreams();
+  $('liveTag').textContent = s.running ? '直播中' : '未开播';
+  $('speakMode').value = s.speakMode || 'keyword';
+  $('voice').value = s.voice || 'zh-CN-XiaoxiaoNeural';
+  $('template').value = s.template || '{nickname}说：{content}';
+  $('keywords').value = s.keywords || '';
+  fillDuo();
+  connectSSE();
+}
+
+/** 双人下拉：把当前音色表填进两个 select，并回显已存配置 */
+function fillDuo() {
+  const opts = [...$('voice').options].map((o) => `<option value="${o.value}">${o.textContent}</option>`).join('');
+  const blank = '<option value="">（不启用）</option>';
+  $('hostVoice').innerHTML = blank + opts;
+  $('assistVoice').innerHTML = blank + opts;
+  if (cur) {
+    $('hostVoice').value = cur.hostVoice || '';
+    $('assistVoice').value = cur.assistantVoice || '';
+    $('zhuPct').value = cur.zhu_baifenbi ?? 30;
+  }
+  const on = !!(cur && cur.hostVoice && cur.assistantVoice);
+  $('duoState').textContent = on ? `已启用，主播 ${$('zhuPct').value}%` : '未启用（选了两个音色才生效）';
+}
+
+/* ---------------- 事件委托 ---------------- */
+document.addEventListener('click', async (e) => {
+  const t = e.target.closest('button');
+  if (t?.dataset.copy) { navigator.clipboard.writeText(t.dataset.copy); t.textContent = '已复制'; return; }
+  if (t?.dataset.act) {
+    const id = t.dataset.id, act = t.dataset.act;
+    if (act === 'del') {
+      if (!confirm('确认删除该直播位？')) return;
+      await api('/api/v1.liveapi/delStream', { method: 'POST', body: JSON.stringify({ id }) });
+      cur = null;
+    } else {
+      await api('/api/v1.liveapi/editStream', {
+        method: 'POST',
+        body: JSON.stringify(act === 'renew' ? { id, minutes: 60 } : { id, action: act }),
+      });
+    }
+    await loadStreams();
+    return;
+  }
+  const card = e.target.closest('.stream');
+  if (card) select(streams.find((s) => String(s.id) === card.dataset.id));
+});
+
+$('btnAdd').onclick = async () => {
+  const name = $('newName').value.trim() || '直播任务';
+  const r = await api('/api/v1.liveapi/addStream', { method: 'POST', body: JSON.stringify({ name }) });
+  if (r.code !== 200) return alert(r.msg);
+  $('newName').value = '';
+  await loadStreams();
+  select(r.data);
+};
+
+$('btnSaveCfg').onclick = async () => {
+  if (!cur) return alert('先选一个直播位');
+  const r = await api('/api/v1.liveapi/editStream', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: cur.id, speakMode: $('speakMode').value, voice: $('voice').value,
+      template: $('template').value, keywords: $('keywords').value,
+      hostVoice: $('hostVoice').value, assistantVoice: $('assistVoice').value,
+      zhu_baifenbi: Number($('zhuPct').value) || 0,
+    }),
+  });
+  if (r.code === 200) { Object.assign(cur, r.data); fillDuo(); log('sys', '规则已保存'); }
+};
+
+$('btnTest').onclick = async () => {
+  const r = await api('/api/v1.liveapi/makeAudio', {
+    method: 'POST',
+    body: JSON.stringify({ text: $('testText').value, voice: $('voice').value }),
+  });
+  if (r.code !== 200) return log('err', r.msg);
+  push(r.data.url, $('testText').value);
+};
+
+$('btnClear').onclick = () => ($('log').innerHTML = '');
+
+$('btnDy').onclick = async () => {
+  if (!cur) return alert('先选一个直播位');
+  const room = $('dyRoom').value.trim();
+  if (!room) return alert('填抖音直播间地址或 room_id');
+  log('sys', '正在接入抖音直连…');
+  const r = await api('/api/v1.liveapi/attachDouyin', {
+    method: 'POST', body: JSON.stringify({ id: cur.id, room }),
+  });
+  log(r.code === 200 ? 'sys' : 'err', r.code === 200 ? `已接入：${room}` : r.msg);
+};
+$('btnDyStop').onclick = async () => {
+  if (!cur) return;
+  await api('/api/v1.liveapi/detachDouyin', { method: 'POST', body: JSON.stringify({ id: cur.id }) });
+  log('sys', '已断开抖音直连');
+};
+
+/* ---------------- 实时 ---------------- */
+function connectSSE() {
+  if (es) es.close();
+  if (!cur) return;
+  es = new EventSource(`/api/live/events?live_id=${cur.live_id}`);
+  es.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.kind === 'bullet') {
+      const tag = { 1: '发言', 2: '进入', 3: '关注', 4: '点赞', 6: '礼物', '-1': '告警' }[m.type] || m.type;
+      log('', `${m.nickname || ''}：${m.content}`, tag);
+      cur.bullets = (cur.bullets || 0) + 1;
+      renderStreams();
+    } else if (m.kind === 'speech') {
+      const tag = m.engineHint === 'clone' ? '🎙 克隆' : m.engineHint === 'clone-pending' ? '⚡ 云端(克隆生成中)' : '';
+      log('speech', `🔊 ${m.text}${tag ? '  [' + tag + ']' : ''}`);
+      if ($('speakOn').checked) push(m.url, m.text);
+    } else if (m.kind === 'clone-ready') {
+      // 克隆音频生成好了：直接播这一版（真正的本人声音）
+      log('speech', `🎙 克隆完成，播放真人音色：${m.text.slice(0, 20)}…`);
+      if ($('speakOn').checked) push(m.url, m.text);
+    } else if (m.kind === 'tts-error') {
+      log('err', '语音合成失败：' + m.error);
+    } else if (m.kind === 'sys') {
+      log('sys', m.text);
+    }
+  };
+}
+
+function log(cls, text, tag) {
+  const d = document.createElement('div');
+  d.className = 'line ' + (cls || '');
+  d.innerHTML = tag ? `<span class="who">[${esc(tag)}]</span><span class="txt">${esc(text)}</span>`
+                    : `<span class="txt">${esc(text)}</span>`;
+  $('log').appendChild(d);
+  $('log').scrollTop = $('log').scrollHeight;
+  while ($('log').childNodes.length > 500) $('log').removeChild($('log').firstChild);
+}
+
+/* 顺序播放，避免叠音 */
+function push(url, text) { audioQ.push({ url, text }); if (!playing) nextAudio(); }
+function nextAudio() {
+  const item = audioQ.shift();
+  if (!item) { playing = false; return; }
+  playing = true;
+  const a = new Audio(item.url);
+  a.onended = a.onerror = () => { playing = false; nextAudio(); };
+  a.play().catch(() => { playing = false; nextAudio(); });
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot' }[c])); }
+
+boot();
+</script>
+</body>
+</html>

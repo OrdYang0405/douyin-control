@@ -15,11 +15,14 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
-const PY = path.join(ROOT, 'tools', 'gpt-sovits', '.venv', 'Scripts', 'python.exe');
+/** venv 里的 python：Windows 是 .venv\Scripts\python.exe，macOS/Linux 是 .venv/bin/python */
+const PY = process.platform === 'win32'
+  ? path.join(ROOT, 'tools', 'gpt-sovits', '.venv', 'Scripts', 'python.exe')
+  : path.join(ROOT, 'tools', 'gpt-sovits', '.venv', 'bin', 'python');
 const SCRIPT = path.join(ROOT, 'tools', 'gpt-sovits', 'xtts_server.py');
 const REF_DIR = path.join(ROOT, 'tools', 'gpt-sovits', 'refs');
 /** 备用参考目录：纯 ASCII 路径，规避 Windows 下 python stdio 的中文路径问题 */
-const REF_DIR_ASCII = 'D:\\tts-refs';
+const REF_DIR_ASCII = process.platform === 'win32' ? 'D:\\tts-refs' : '/tmp/tts-refs';
 
 let proc = null;
 let seq = 0;
